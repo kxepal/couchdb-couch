@@ -406,10 +406,10 @@ check_is_admin(#db{user_ctx=#user_ctx{name=Name,roles=Roles}}=Db) ->
     AdminNames = couch_util:get_value(<<"names">>, Admins,[]),
     case AdminRoles -- Roles of
     AdminRoles -> % same list, not an admin role
-        case AdminNames -- [Name] of
-        AdminNames -> % same names, not an admin
+        case lists:member(Name, AdminNames) of
+        false ->
             throw({unauthorized, <<"You are not a db or server admin.">>});
-        _ ->
+        true ->
             ok
         end;
     _ ->
@@ -429,13 +429,13 @@ check_is_member(#db{user_ctx=#user_ctx{name=Name,roles=Roles}=UserCtx}=Db) ->
         _Else ->
             case WithAdminRoles -- Roles of
             WithAdminRoles -> % same list, not an reader role
-                case ReaderNames -- [Name] of
-                ReaderNames -> % same names, not a reader
+                case lists:member(Name, ReaderNames) of
+                false ->
                     couch_log:debug("Not a reader: UserCtx ~p"
                                     " vs Names ~p Roles ~p",
                                     [UserCtx, ReaderNames, WithAdminRoles]),
                     throw({unauthorized, <<"You are not authorized to access this db.">>});
-                _ ->
+                true ->
                     ok
                 end;
             _ ->
