@@ -421,19 +421,19 @@ check_is_member(#db{user_ctx=#user_ctx{name=Name,roles=Roles}=UserCtx}=Db) ->
     ok -> ok;
     _ ->
         {Members} = get_members(Db),
-        ReaderRoles = couch_util:get_value(<<"roles">>, Members,[]),
-        WithAdminRoles = [<<"_admin">> | ReaderRoles],
-        ReaderNames = couch_util:get_value(<<"names">>, Members,[]),
-        case ReaderRoles ++ ReaderNames of
-        [] -> ok; % no readers == public access
+        MemberRoles = couch_util:get_value(<<"roles">>, Members, []),
+        WithAdminRoles = [<<"_admin">> | MemberRoles],
+        MemberNames = couch_util:get_value(<<"names">>, Members, []),
+        case MemberRoles ++ MemberNames of
+        [] -> ok; % no members == public access
         _Else ->
             case WithAdminRoles -- Roles of
-            WithAdminRoles -> % same list, not an reader role
-                case lists:member(Name, ReaderNames) of
+            WithAdminRoles -> % same list, not an member role
+                case lists:member(Name, MemberNames) of
                 false ->
-                    couch_log:debug("Not a reader: UserCtx ~p"
+                    couch_log:debug("Not a member: UserCtx ~p"
                                     " vs Names ~p Roles ~p",
-                                    [UserCtx, ReaderNames, WithAdminRoles]),
+                                    [UserCtx, MemberNames, WithAdminRoles]),
                     case Name of
                         null ->
                             throw({unauthorized, <<"You are not authorized to access this db.">>});
