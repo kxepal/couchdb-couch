@@ -400,54 +400,58 @@ get_design_docs(#db{id_tree = IdBtree}) ->
     {ok, _, Docs} = couch_btree:fold(IdBtree, FoldFun, [], KeyOpts),
     {ok, Docs}.
 
-check_is_admin(#db{user_ctx=#user_ctx{name=Name,roles=Roles}}=Db) ->
+check_is_admin(#db{user_ctx=UserCtx}=Db) ->
     {Admins} = get_admins(Db),
-    AdminRoles = [<<"_admin">> | couch_util:get_value(<<"roles">>, Admins, [])],
-    AdminNames = couch_util:get_value(<<"names">>, Admins,[]),
-    case AdminRoles -- Roles of
-    AdminRoles -> % same list, not an admin role
-        case lists:member(Name, AdminNames) of
-        false ->
-            throw({unauthorized, <<"You are not a db or server admin.">>});
-        true ->
-            ok
-        end;
-    _ ->
-        ok
+    case check_security(UserCtx, Admins) of
+    true -> ok;
+    false ->
+        throw({unauthorized, <<"You are not a db or server admin.">>})
     end.
 
-check_is_member(#db{user_ctx=#user_ctx{name=Name,roles=Roles}=UserCtx}=Db) ->
+check_is_member(#db{user_ctx=UserCtx}=Db) ->
     case (catch check_is_admin(Db)) of
     ok -> ok;
     _ ->
         {Members} = get_members(Db),
-        MemberRoles = couch_util:get_value(<<"roles">>, Members, []),
-        WithAdminRoles = [<<"_admin">> | MemberRoles],
-        MemberNames = couch_util:get_value(<<"names">>, Members, []),
-        case MemberRoles ++ MemberNames of
-        [] -> ok; % no members == public access
-        _Else ->
-            case WithAdminRoles -- Roles of
-            WithAdminRoles -> % same list, not an member role
-                case lists:member(Name, MemberNames) of
-                false ->
-                    couch_log:debug("Not a member: UserCtx ~p"
-                                    " vs Names ~p Roles ~p",
-                                    [UserCtx, MemberNames, WithAdminRoles]),
-                    case Name of
-                        null ->
-                            throw({unauthorized, <<"You are not authorized to access this db.">>});
-                        _ ->
-                            throw({forbidden, <<"You are not allowed to access this db.">>})
-                    end;
-                true ->
-                    ok
-                end;
-            _ ->
-                ok
-            end
+        case check_security(UserCtx, Members) of
+        true -> ok;
+        false ->
+            couch_log:debug("Not a member: UserCtx ~p vs Members ~p",
+                            [UserCtx, Members]),
+            throw_security_error(UserCtx)
         end
     end.
+
+check_security(#user_ctx{name=UserName,roles=UserRoles}, NamesRoles) ->
+    Names = couch_util:get_value(<<"names">>, NamesRoles, []),
+    Roles = couch_util:get_value(<<"roles">>, NamesRoles, []),
+    if Names =:= [] andalso Roles =:= [] ->
+        true;
+    true ->
+        case check_security(roles, UserRoles, [<<"_admin">> | Roles]) of
+            true -> true;
+            false -> check_security(names, UserName, Names)
+        end
+    end.
+
+check_security(roles, [], _) ->
+    false;
+check_security(roles, UserRoles, Roles) ->
+    UserRolesSet = ordsets:from_list(UserRoles),
+    RolesSet = ordsets:from_list(Roles),
+    not ordsets:is_disjoint(UserRolesSet, RolesSet);
+check_security(names, _, []) ->
+    false;
+check_security(names, null, _) ->
+    false;
+check_security(names, UserName, Names) ->
+    lists:member(UserName, Names).
+
+throw_security_error(#user_ctx{name=null}) ->
+    throw({unauthorized, <<"You are not authorized to access this db.">>});
+throw_security_error(#user_ctx{name=_}) ->
+    throw({forbidden, <<"You are not allowed to access this db.">>}).
+
 
 get_admins(#db{security=SecProps}) ->
     couch_util:get_value(<<"admins">>, SecProps, {[]}).
