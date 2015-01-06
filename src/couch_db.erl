@@ -434,7 +434,12 @@ check_is_member(#db{user_ctx=#user_ctx{name=Name,roles=Roles}=UserCtx}=Db) ->
                     couch_log:debug("Not a reader: UserCtx ~p"
                                     " vs Names ~p Roles ~p",
                                     [UserCtx, ReaderNames, WithAdminRoles]),
-                    throw({unauthorized, <<"You are not authorized to access this db.">>});
+                    case Name of
+                        null ->
+                            throw({unauthorized, <<"You are not authorized to access this db.">>});
+                        _ ->
+                            throw({forbidden, <<"You are not allowed to access this db.">>})
+                    end;
                 true ->
                     ok
                 end;
